@@ -11,7 +11,7 @@ from keras.utils import pad_sequences
 from keras.callbacks import ReduceLROnPlateau
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
-from models_configurations import CNN
+from models_configurations_glove import CNN
 import os
 
 
