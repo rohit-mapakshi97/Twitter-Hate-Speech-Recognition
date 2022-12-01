@@ -5,13 +5,14 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import numpy as np
+import matplotlib.pyplot as plt
 from keras.models import load_model
 from keras.preprocessing.text import Tokenizer
-from keras.utils import pad_sequences
+from keras.utils import pad_sequences, plot_model
 from keras.callbacks import ReduceLROnPlateau
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
-from models_configurations_glove import CNN
+from models_configurations_glove import CNN, BILSTM, MultiLayerPerceptron
 import os
 
 
@@ -92,6 +93,19 @@ def getTextSequences(texts):
     return train_padded_sentences, tokenizer
 
 
+def saveLearningCurves(model_name, history, plot_config):
+    fig, ax = plt.subplots(1, 2, figsize=(20, 5))
+    for idx in range(2):
+        ax[idx].plot(history.history[plot_config[idx][0]])
+        ax[idx].plot(history.history[plot_config[idx][1]])
+        ax[idx].legend([plot_config[idx][0], plot_config[idx][1]], fontsize=17)
+        ax[idx].set_xlabel('Loss ', fontsize=14)
+        ax[idx].set_ylabel('Accuracy', fontsize=14)
+        ax[idx].set_title(plot_config[idx][0] + ' X ' +
+                          plot_config[idx][1], fontsize=16)
+    fig.savefig(PATH_PLOTS + model_name + ".png")
+
+
 TEXT = "tweet"
 LABEL = "class"
 CLASS_HATE_SPEECH = "Hate Speech"
@@ -101,8 +115,12 @@ CLASS_NEITHER = "Neither"
 class_map = {0: CLASS_HATE_SPEECH,
              1: CLASS_OFFENSIVE_LANGUAGE, 2: CLASS_NEITHER}
 
+PATH_TWEETS_DATA = "data/t_davison_twitter_labeled_data.csv"  # "data/test.csv"
 PATH_CNN_GLOVE = "models/glove_cnn"
-PATH_TWEETS_DATA = "data/t_davison_twitter_labeled_data.csv" #"data/test.csv"
+PATH_BILSTM_GLOVE = "models/glove_bilstm"
+PATH_MLP_GLOVE = "models/glove_mlp"
+PATH_PLOTS = "plots/"
+PLOT_CONFIG = [["loss", "val_loss"], ["accuracy", "val_accuracy"]]
 
 if __name__ == "__main__":
     raw_df = pd.read_csv(PATH_TWEETS_DATA, decimal=",")
@@ -143,15 +161,13 @@ if __name__ == "__main__":
 
     class_weights = getClassWeights(labels)
     input_length = train_padded_sentences.shape[1]
-    # epoch_count = 100
-    # batch_size = 128
 
     # Reduce learning rate when model reaches a plateau
     # ref: https://keras.io/api/callbacks/reduce_lr_on_plateau/
     reduce_lr = ReduceLROnPlateau(
         monitor='val_loss', factor=0.2, verbose=1, patience=5, min_lr=0.001)
 
-    print("3.1 Training CNN\n")
+    print("3.1 Training and Testing CNN\n")
     cnn_classifer = None
     if (os.path.isdir(PATH_CNN_GLOVE)):
         cnn_classifer = load_model(PATH_CNN_GLOVE)
@@ -160,7 +176,7 @@ if __name__ == "__main__":
         history_cnn = cnn_classifer.fit(
             X_train,
             Y_train,
-            epochs=75,
+            epochs=20,
             batch_size=128,
             validation_data=(X_val, Y_val),
             verbose=1,
@@ -169,11 +185,68 @@ if __name__ == "__main__":
         )
         cnn_classifer.save(PATH_CNN_GLOVE)
     print(cnn_classifer.summary())
+    plot_model(cnn_classifer, to_file=PATH_PLOTS +
+               "glove_cnn_model_def.png", show_shapes=True)
 
-    # Step 4 Test
+    #Testing
     cnn_predict = np.argmax(cnn_classifer.predict(X_test), axis=-1)
+    
     print(classification_report(Y_test, cnn_predict))
     print(confusion_matrix(Y_test, cnn_predict))
+    saveLearningCurves("GLOVE_CNN", history_cnn, PLOT_CONFIG)
 
-    # Step 5 Generate Stats
+    print("3.2 Training and Testing Bi-directional LSTM\n")
+    bilstm_classifer = None
+    if (os.path.isdir(PATH_BILSTM_GLOVE)):
+        bilstm_classifer = load_model(PATH_BILSTM_GLOVE)
+    else:
+        bilstm_classifer = BILSTM(embedding_matrix, input_length)
+        history_bilstm = bilstm_classifer.fit(
+            X_train,
+            Y_train,
+            epochs=20,
+            batch_size=128,
+            validation_data=(X_val, Y_val),
+            verbose=1,
+            callbacks=[reduce_lr],
+            class_weight=class_weights
+        )
+        bilstm_classifer.save(PATH_BILSTM_GLOVE)
+    print(bilstm_classifer.summary())
+    plot_model(bilstm_classifer, to_file=PATH_PLOTS+"glove_bilstm_model_def.png", show_shapes=True)
+    
+    #Testing
+    bilstm_predict = np.argmax(bilstm_classifer.predict(X_test), axis=-1)
+    
+    print(classification_report(Y_test, bilstm_predict))
+    print(confusion_matrix(Y_test, bilstm_predict))
+    saveLearningCurves("GLOVE_BILSTM", history_bilstm, PLOT_CONFIG)
+
+    print("3.3 Training and Testing Multilayer Perceptron\n")
+    mlp_classifier = None
+    if (os.path.isdir(PATH_MLP_GLOVE)):
+        mlp_classifier = load_model(PATH_MLP_GLOVE)
+    else:
+        mlp_classifier = MultiLayerPerceptron(embedding_matrix, input_length)
+        history_mlp = mlp_classifier.fit(
+            X_train,
+            Y_train,
+            epochs=20,
+            batch_size=128,
+            validation_data=(X_val, Y_val),
+            verbose=1,
+            callbacks=[reduce_lr],
+            class_weight=class_weights
+        )
+        mlp_classifier.save(PATH_MLP_GLOVE)
+    print(mlp_classifier.summary())
+    plot_model(mlp_classifier, to_file=PATH_PLOTS+"glove_mlp_model_def.png", show_shapes=True)
+
+    #Testing
+    mlp_prediction = np.argmax(mlp_classifier.predict(X_test), axis=-1)
+    
+    print(classification_report(Y_test, mlp_prediction))
+    print(confusion_matrix(Y_test, mlp_prediction))
+    saveLearningCurves("GLOVE_MLP", history_mlp, PLOT_CONFIG)
+
     pass
