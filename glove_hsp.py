@@ -13,6 +13,7 @@ from keras.callbacks import ReduceLROnPlateau
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from models_configurations_glove import CNN, BILSTM, MultiLayerPerceptron
+from wordcloud import WordCloud
 import os
 
 
@@ -22,6 +23,17 @@ def getDatasetStats():
 # Class weights are used when we have an imbalanced dataset. The under represented features
 # will have higher error rate
 # ref: https://www.tensorflow.org/tutorials/structured_data/imbalanced_data
+
+def printStats(series):
+    hate, ofensive, neither = np.bincount(series)
+    total = hate + ofensive + neither
+    weight_class1 = (1 / hate)*(total)/3.0
+    weight_class2 = (1 / ofensive)*(total)/3.0
+    weight_class3 = (1 / neither)*(total)/3.0
+    print("Total Number of Tweets:", total)
+    print("Hate Speech:", hate, "Weight Assigned:", weight_class1)
+    print("Offensive Language:", ofensive, "Weight Assigned:", weight_class2)
+    print("Neither:", neither, "Weight Assigned:", weight_class3)
 
 
 def getClassWeights(series):
@@ -125,10 +137,22 @@ PLOT_CONFIG = [["loss", "val_loss"], ["accuracy", "val_accuracy"]]
 if __name__ == "__main__":
     raw_df = pd.read_csv(PATH_TWEETS_DATA, decimal=",")
     df = pd.concat([raw_df[TEXT], raw_df[LABEL]], axis=1)
+    # Step 0 Create Plot:
+    plot_df = df[LABEL].map(class_map) 
+    ax = plot_df.value_counts().plot(kind='bar', figsize= (14,8), title="Number of Tweets per Category", rot=0)
+    ax.set_xlabel("Category")
+    ax.set_ylabel("Number of Tweets")
+    ax.get_figure().savefig(PATH_PLOTS+"data.png")
+    printStats(df[LABEL])
     # Step 1 Preprocess:
     print("\n1. Preprocessing Tweets..\n")
     df[TEXT] = df.apply(lambda x: preprocessText(x[TEXT]), axis=1)
-
+    # Step 1.1 Generate Word Cloud
+    # plt.clf()
+    # wordcloud = WordCloud().generate(df[TEXT].str.cat())
+    # plt.imshow(wordcloud)
+    # plt.savefig(PATH_PLOTS + "wordcloud.png")
+    
     # Step 2 Generate Word Embeddings
     print("2. Generating Glove Embeddings..\n")
     texts = df[TEXT]
